@@ -1,4 +1,54 @@
+* make also clear buttons honor the disabled attribute
+
+## 1.5.4 (2025-01-29)
+
+* Fix [bug](https://github.com/maxmarcon/live_select/issues/98) causing selection recovery to fail if Phoenix uses the built-in JSON module from Elixir 1.18
+
+## 1.5.3 (2025-01-27)
+
+* Fix [bug](https://github.com/maxmarcon/live_select/issues/96) that causes selection recovery to fail when `input_for` is used to render the component
+* Remove dependency from `Jason` library
+
+## 1.5.2 (2024-12-28)
+
+* Fix [bug](https://github.com/maxmarcon/live_select/issues/70) where the keyboard doesn't show on some mobile browsers if an element is already selected in single mode
+
+## 1.5.1 (2024-12-28)
+
+* Add unavailable_option_class to style options that cannot be selected because of max_selectable > 0
+* Fix can't remove items in quick_tags mode via dropdown with max_selectable
+
+## 1.5.0 (2024-12-27)
+
+* new quick_tags mode 
+* showcase app: add toggle to style options as checkboxes
+
+## 1.4.4 (2024-12-07)
+
+* support for LiveView 1.0.0
+
+## 1.4.3 (2024-10-28)
+
+* add options clear_tag_button_class and clear_tag_button_extra_class to style button to clear tags
+* fix [bug](https://github.com/maxmarcon/live_select/issues/81) where selection was not restored after focus+blur when value is pre-selected or forced 
+  
+## 1.4.2 (2024-06-19)
+
+do not restore selection after blur it it was cleard by hitting the clear button
+
+## 1.4.1 (2024-06-18)
+
+* fix bug introduced by LV-1.0's new focus behavior (https://github.com/maxmarcon/live_select/issues/72)
+
+## 1.4.0 (2024-03-18)
+
+* support for associations and embeds
+* add `value_mapper` assign and `decode/1` function
+
+## 1.3.3 (2024-02-06)
+
 * add slot to render custom clear button
+* add option to extend clear button style
 
 ## 1.3.2 (2024-01-26)
 
@@ -10,7 +60,7 @@
 
 ## 1.3.0 (2023-12-05)
 
-* added support for form recovery. Upon reconnection, the client sends an event (`options_recovery`) that contains the latest selection. This allows recovery of the options that were active before the view disconnected.
+* added support for selection recovery. Upon reconnection, the client sends an event (`selection_recovery`) that contains the latest selection. This allows recovery of the selection that was active before the view disconnected.
 
 ## 1.2.2 (2023-10-21)
 

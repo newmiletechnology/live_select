@@ -4,8 +4,8 @@ defmodule LiveSelect.MixProject do
   def project do
     [
       app: app(),
-      version: "1.3.2",
-      elixir: "~> 1.13",
+      version: "1.5.4",
+      elixir: "~> 1.14",
       description: "Dynamic (multi)selection field for LiveView",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: Mix.compilers(),
@@ -52,14 +52,14 @@ defmodule LiveSelect.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix_live_view, "~> 0.19"},
+      {:phoenix_live_view, "~> 0.19 or ~> 1.0"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_html_helpers, "~> 1.0"},
-      {:jason, "~> 1.0"},
+      {:jason, "~> 1.0", only: [:dev, :test, :demo]},
       {:phoenix, ">= 1.6.0", optional: true},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_ecto, "~> 4.0", only: [:dev, :test, :demo]},
-      {:ecto, "~> 3.8", only: [:dev, :test, :demo]},
+      {:ecto, "~> 3.8"},
       {:floki, ">= 0.30.0", only: :test},
       {:esbuild, "~> 0.4", only: [:dev, :test, :demo]},
       {:plug_cowboy, "~> 2.5", only: [:dev, :demo]},
@@ -110,7 +110,7 @@ defmodule LiveSelect.MixProject do
         "CHANGELOG.md": []
       ],
       filter_modules: ~r/LiveSelect($|\.)/,
-      groups_for_functions: [
+      groups_for_docs: [
         Components: &(&1[:type] == :component)
       ]
     ]

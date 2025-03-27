@@ -21,10 +21,10 @@ defmodule LiveSelectWeb.LiveComponentForm do
       <.form for={@form} phx-submit="submit" phx-change="change" phx-target={@myself}>
         <.live_select field={@form[:city_search]} mode={:tags} phx-target={@myself}>
           <:option :let={option}>
-            with custom slot: <%= option.label %>
+            with custom slot: {option.label}
           </:option>
           <:tag :let={option}>
-            with custom slot: <%= option.label %>
+            with custom slot: {option.label}
           </:tag>
         </.live_select>
         <.live_select field={@form[:city_search_custom_clear_single]} phx-target={@myself} allow_clear>
@@ -42,7 +42,7 @@ defmodule LiveSelectWeb.LiveComponentForm do
             custom clear button
           </:clear_button>
         </.live_select>
-        <%= submit("Submit", class: "btn btn-primary") %>
+        {submit("Submit", class: "btn btn-primary")}
       </.form>
     </div>
     """
@@ -50,7 +50,9 @@ defmodule LiveSelectWeb.LiveComponentForm do
 
   @impl true
   def handle_event("live_select_change", %{"id" => live_select_id, "text" => text}, socket) do
-    result = GenServer.call(CityFinder, {:find, text})
+    result =
+      GenServer.call(CityFinder, {:find, text})
+      |> Enum.map(&value_mapper/1)
 
     send_update(LiveSelect.Component, id: live_select_id, options: result)
 
@@ -66,4 +68,8 @@ defmodule LiveSelectWeb.LiveComponentForm do
   def handle_event("change", %{"my_form" => %{"city_search" => _live_select}}, socket) do
     {:noreply, socket}
   end
+
+  defp value_mapper(%{name: name} = value), do: %{label: name, value: Map.from_struct(value)}
+
+  defp value_mapper(value), do: value
 end

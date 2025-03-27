@@ -12,7 +12,7 @@ interface for search-like functionalities with type-ahead. `LiveSelect`s feature
 
 * Single as well as multiple selection
 * Options to configure the behaviour, such as minimum number of characters that trigger an update or the maximum number of selectable options
-* Default styles for daisyUI and tailwindcss, which are fully customizable and can be completely overriden if needed
+* Default styles for daisyUI and tailwindcss, which are fully customizable and can be completely overridden if needed
 * Ability to customize the rendered HTML for dropdown entries and tags using slots.
 
 ### [Try it in the showcase app](https://live-select.fly.dev/) 🔬
@@ -24,6 +24,10 @@ interface for search-like functionalities with type-ahead. `LiveSelect`s feature
 ### Multiple selection (tags mode)
 
 ![DEMO](https://raw.githubusercontent.com/maxmarcon/live_select/main/priv/static/images/demo_tags.gif)
+
+### Multiple selection (quick_tags mode)
+
+![DEMO](https://raw.githubusercontent.com/maxmarcon/live_select/main/priv/static/images/demo_quick_tags.gif)
 
 ## Usage Example 🧭
 
@@ -44,8 +48,6 @@ _Template:_
 _In the LiveView or LiveComponent that's the target of your form events:_
 
   ```elixir
-  import LiveSelect
-
   @impl true
   def handle_event("live_select_change", %{"text" => text, "id" => live_select_id}, socket) do 
     cities = City.search(text)
@@ -177,8 +179,9 @@ of the callback that your LiveView needs to implement in order to handle the eve
 
 ## Contribute 🤝
 
-Contributions are very welcome! If you add some new feature, please also add a test that covers it if possible. If you don't know how to write the test,
-I'm happy to help. At the very least, please make sure that your code changes don't break any existing tests.
+Contributions are very welcome! However, if you want do add a new feature please discuss it first by creating an issue so we can all agree that it's needed. 
+Also, it's important to add a test that covers it. If you don't know how to write the test or need guidance,
+I'm happy to help.
 
 Use `mix test` to run the entire test suite, which is subdivided into 3 main files:
 
@@ -200,4 +203,5 @@ Tests that require a LiveView use the showcase app as the parent LiveView.
 - [X] Enable multiple selection mode
 - [X] Expose as function component (and drop LV 0.17 support)
 - [X] Add cheatsheet
-- [ ] Additional multiple selection mode 
+- [X] Additional multiple selection mode 
+- [ ] Add section to document testing strategies

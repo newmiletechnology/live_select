@@ -12,7 +12,8 @@ defmodule Mix.Tasks.DumpStyleTable do
     end)
     |> List.flatten()
     |> Enum.group_by(&elem(&1, 0))
-    |> Map.new(fn {el, list} -> {el, Enum.map(list, &Tuple.delete_at(&1, 0)) |> Enum.sort()} end)
+    |> Enum.map(fn {el, list} -> {el, Enum.map(list, &Tuple.delete_at(&1, 0)) |> Enum.sort()} end)
+    |> Enum.sort_by(&elem(&1, 0))
     |> Enum.with_index()
     |> Enum.map(fn {{el, styles}, idx} ->
       header =

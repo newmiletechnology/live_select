@@ -14,7 +14,11 @@ defmodule LiveSelect.Component do
     active_option_class: nil,
     allow_clear: false,
     available_option_class: nil,
+    unavailable_option_class: nil,
     clear_button_class: nil,
+    clear_button_extra_class: nil,
+    clear_tag_button_class: nil,
+    clear_tag_button_extra_class: nil,
     user_defined_options: false,
     container_class: nil,
     container_extra_class: nil,
@@ -45,11 +49,13 @@ defmodule LiveSelect.Component do
     tailwind: [
       active_option: ~W(text-white bg-gray-600),
       available_option: ~W(cursor-pointer hover:bg-gray-400 rounded),
-      clear_button: ~W(hidden),
+      unavailable_option: ~W(text-gray-400),
+      clear_button: ~W(hidden cursor-pointer),
+      clear_tag_button: ~W(cursor-pointer),
       container: ~W(h-full text-black relative),
       dropdown: ~W(absolute rounded-md shadow z-50 bg-gray-100 inset-x-0 top-full),
       option: ~W(rounded px-4 py-1),
-      selected_option: ~W(text-gray-400),
+      selected_option: ~W(cursor-pointer font-bold hover:bg-gray-400 rounded),
       text_input:
         ~W(rounded-md w-full disabled:bg-gray-100 disabled:placeholder:text-gray-400 disabled:text-gray-400 pr-6),
       text_input_selected: ~W(border-gray-600 text-gray-600),
@@ -59,12 +65,14 @@ defmodule LiveSelect.Component do
     daisyui: [
       active_option: ~W(active),
       available_option: ~W(cursor-pointer),
-      clear_button: ~W(hidden),
+      unavailable_option: ~W(disabled),
+      clear_button: ~W(hidden cursor-pointer),
+      clear_tag_button: ~W(cursor-pointer),
       container: ~W(dropdown dropdown-open),
       dropdown:
         ~W(dropdown-content z-[1] menu menu-compact shadow rounded-box bg-base-200 p-1 w-full),
       option: nil,
-      selected_option: ~W(disabled),
+      selected_option: ~W(cursor-pointer font-bold),
       text_input: ~W(input input-bordered w-full pr-6),
       text_input_selected: ~W(input-primary),
       tags_container: ~W(flex flex-wrap gap-1 p-1),
@@ -73,7 +81,7 @@ defmodule LiveSelect.Component do
     none: []
   ]
 
-  @modes ~w(single tags)a
+  @modes ~w(single tags quick_tags)a
 
   @impl true
   def mount(socket) do
@@ -83,8 +91,9 @@ defmodule LiveSelect.Component do
         active_option: -1,
         hide_dropdown: true,
         awaiting_update: true,
-        saved_selection: nil,
-        selection: []
+        last_selection: nil,
+        selection: [],
+        value_mapper: & &1
       )
 
     {:ok, socket}
@@ -146,12 +155,13 @@ defmodule LiveSelect.Component do
         update(
           socket,
           :selection,
-          fn selection, %{options: options, mode: mode} ->
+          fn selection, %{options: options, mode: mode, value_mapper: value_mapper} ->
             update_selection(
               field.value,
               selection,
               options,
-              mode
+              mode,
+              value_mapper
             )
           end
         )
@@ -162,13 +172,15 @@ defmodule LiveSelect.Component do
     socket =
       if Map.has_key?(assigns, :value) do
         update(socket, :selection, fn
-          selection, %{options: options, value: value, mode: mode} ->
-            update_selection(value, selection, options, mode)
+          selection, %{options: options, value: value, mode: mode, value_mapper: value_mapper} ->
+            update_selection(value, selection, options, mode, value_mapper)
         end)
         |> client_select(%{input_event: true})
       else
         socket
       end
+
+    socket = maybe_save_selection(socket)
 
     {:ok, socket}
   end
@@ -184,17 +196,9 @@ defmodule LiveSelect.Component do
   end
 
   @impl true
-  def handle_event("click", _params, socket) do
-    socket = assign(socket, hide_dropdown: false)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("focus", _params, socket) do
+  def handle_event(event, _params, socket) when event in ~w(focus click) do
     socket =
       socket
-      |> maybe_save_selection()
       |> then(
         &if &1.assigns.mode == :single do
           clear(&1, %{input_event: false, parent_event: &1.assigns[:"phx-focus"]})
@@ -217,18 +221,28 @@ defmodule LiveSelect.Component do
   end
 
   @impl true
-  def handle_event("options_recovery", options, socket) do
+  def handle_event("selection_recovery", selection_from_client, socket) do
+    # selection recovery. If we are here, it means that the view has crashed
+    # The values have been sent to the form by LV selection recovery and are now in the selection assigns
+    # However, the label have been lost because selection recovery only sends the values.
+    # Therefore, the component sends this event with the selection stored on the client, which contains the labels
+    # Using this selection, we can restore the options and augment the current selection with the labels
+
     options =
-      for %{"label" => label, "value" => value} <- options do
+      for %{"label" => label, "value" => value} <- selection_from_client do
         %{label: label, value: value}
       end
+
+    json = Phoenix.json_library()
 
     {:noreply,
      assign(socket,
        options: options,
        selection:
          Enum.map(socket.assigns.selection, fn %{value: value} ->
-           Enum.find(options, fn %{value: option_value} -> option_value == value end)
+           Enum.find(options, fn %{value: option_value} ->
+             json.encode!(option_value) == json.encode!(value)
+           end)
          end)
          |> Enum.filter(& &1)
      )}
@@ -301,7 +315,12 @@ defmodule LiveSelect.Component do
 
   @impl true
   def handle_event("clear", _params, socket) do
-    {:noreply, clear(socket, %{input_event: true})}
+    socket =
+      socket
+      |> assign(last_selection: nil)
+      |> clear(%{input_event: true})
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -351,6 +370,7 @@ defmodule LiveSelect.Component do
           :tag,
           :clear_button,
           :hide_dropdown,
+          :value_mapper,
           # for backwards compatibility
           :form
         ]
@@ -368,17 +388,6 @@ defmodule LiveSelect.Component do
   end
 
   defp maybe_select(socket, extra_params \\ %{})
-
-  defp maybe_select(
-         %{assigns: %{selection: selection, max_selectable: max_selectable}} = socket,
-         _extra_params
-       )
-       when max_selectable > 0 and length(selection) >= max_selectable do
-    assign(socket,
-      active_option: -1,
-      hide_dropdown: true
-    )
-  end
 
   defp maybe_select(
          %{
@@ -414,26 +423,54 @@ defmodule LiveSelect.Component do
 
   defp maybe_select(%{assigns: %{active_option: -1}} = socket, _extra_params), do: socket
 
+  defp maybe_select(
+         %{assigns: %{active_option: active_option, options: options, selection: selection}} =
+           socket,
+         extra_params
+       )
+       when active_option >= 0 do
+    option = Enum.at(options, active_option)
+
+    if already_selected?(option, selection) do
+      pos = get_selection_index(option, selection)
+      unselect(socket, pos)
+    else
+      select(socket, option, extra_params)
+    end
+  end
+
   defp maybe_select(socket, extra_params) do
     select(socket, Enum.at(socket.assigns.options, socket.assigns.active_option), extra_params)
   end
 
+  defp get_selection_index(option, selection) do
+    Enum.find_index(selection, fn %{label: label} -> label == option.label end)
+  end
+
+  defp select(
+         %{assigns: %{selection: selection, max_selectable: max_selectable}} = socket,
+         _selected,
+         _extra_params
+       )
+       when max_selectable > 0 and length(selection) >= max_selectable do
+    assign(socket, hide_dropdown: not quick_tags_mode?(socket))
+  end
+
   defp select(socket, selected, extra_params) do
     selection =
-      case socket.assigns.mode do
-        :tags ->
-          socket.assigns.selection ++ [selected]
-
-        _ ->
-          [selected]
+      if socket.assigns.mode in [:tags, :quick_tags] do
+        socket.assigns.selection ++ [selected]
+      else
+        [selected]
       end
 
     socket
     |> assign(
-      active_option: -1,
+      active_option: if(quick_tags_mode?(socket), do: socket.assigns.active_option, else: -1),
       selection: selection,
-      hide_dropdown: true
+      hide_dropdown: not quick_tags_mode?(socket)
     )
+    |> maybe_save_selection()
     |> client_select(Map.merge(%{input_event: true}, extra_params))
   end
 
@@ -450,21 +487,20 @@ defmodule LiveSelect.Component do
 
   defp maybe_save_selection(socket) do
     socket
-    |> update(:saved_selection, fn
+    |> update(:last_selection, fn
       _, %{selection: selection, mode: :single} when selection != [] -> selection
-      saved_selection, _ -> saved_selection
+      last_selection, _ -> last_selection
     end)
   end
 
   defp maybe_restore_selection(socket) do
     update(socket, :selection, fn
-      _, %{saved_selection: saved_selection, mode: :single} when saved_selection != nil ->
-        saved_selection
+      _, %{last_selection: last_selection, mode: :single} when last_selection != nil ->
+        last_selection
 
       selection, _ ->
         selection
     end)
-    |> assign(:saved_selection, nil)
   end
 
   defp clear(socket, params) do
@@ -489,9 +525,9 @@ defmodule LiveSelect.Component do
     )
   end
 
-  def parent_event(socket, nil, _payload), do: socket
+  defp parent_event(socket, nil, _payload), do: socket
 
-  def parent_event(socket, event, payload) do
+  defp parent_event(socket, event, payload) do
     socket
     |> push_event("parent_event", %{
       id: socket.assigns.id,
@@ -500,19 +536,31 @@ defmodule LiveSelect.Component do
     })
   end
 
-  defp update_selection(nil, _current_selection, _options, _mode), do: []
+  defp update_selection(nil, _current_selection, _options, _mode, _value_mapper), do: []
 
-  defp update_selection(value, current_selection, options, :single) do
-    List.wrap(normalize_selection_value(value, options ++ current_selection))
+  defp update_selection(value, current_selection, options, :single, value_mapper) do
+    List.wrap(normalize_selection_value(value, options ++ current_selection, value_mapper))
   end
 
-  defp update_selection(value, current_selection, options, :tags) do
+  defp update_selection(value, current_selection, options, _mode, value_mapper) do
     value = if Enumerable.impl_for(value), do: value, else: [value]
 
-    Enum.map(value, &normalize_selection_value(&1, options ++ current_selection))
+    Enum.map(value, &normalize_selection_value(&1, options ++ current_selection, value_mapper))
+    |> Enum.reject(&is_nil/1)
   end
 
-  defp normalize_selection_value(selection_value, options) do
+  defp normalize_selection_value(%Ecto.Changeset{action: :replace}, _options, _value_mapper),
+    do: nil
+
+  defp normalize_selection_value(%Ecto.Changeset{} = changeset, options, value_mapper) do
+    changeset
+    |> Ecto.Changeset.apply_changes()
+    |> normalize_selection_value(options, value_mapper)
+  end
+
+  defp normalize_selection_value(selection_value, options, value_mapper) do
+    selection_value = value_mapper.(selection_value)
+
     if option = Enum.find(options, fn %{value: value} -> selection_value == value end) do
       option
     else
@@ -607,8 +655,7 @@ defmodule LiveSelect.Component do
     String.split(class_override)
   end
 
-  defp class(:none, element, nil, _class_extend)
-       when element not in [:clear_button, :clear_tag_button] do
+  defp class(:none, element, nil, _class_extend) do
     raise """
     When using `style: :none`, please use only `#{element}_class` and not `#{element}_extra_class`
     """
@@ -636,24 +683,36 @@ defmodule LiveSelect.Component do
 
   defp encode(value) when is_atom(value) or is_binary(value) or is_number(value), do: value
 
-  defp encode(value), do: Jason.encode!(value)
+  defp encode(value), do: Phoenix.json_library().encode!(value)
 
   defp already_selected?(option, selection) do
-    option.label in Enum.map(selection, & &1.label)
+    Enum.any?(selection, fn item -> item.label == option.label end)
+  end
+
+  defp quick_tags_mode?(socket) do
+    socket.assigns.mode == :quick_tags
   end
 
   defp next_selectable(%{
          selection: selection,
          active_option: active_option,
-         max_selectable: max_selectable
+         max_selectable: max_selectable,
+         mode: mode
        })
-       when max_selectable > 0 and length(selection) >= max_selectable,
+       when mode != :quick_tags and max_selectable > 0 and length(selection) >= max_selectable,
        do: active_option
 
-  defp next_selectable(%{options: options, active_option: active_option, selection: selection}) do
+  defp next_selectable(%{
+         options: options,
+         active_option: active_option,
+         selection: selection,
+         mode: mode
+       }) do
     options
     |> Enum.with_index()
-    |> Enum.reject(fn {opt, _} -> active_option == opt || already_selected?(opt, selection) end)
+    |> Enum.reject(fn {opt, _} ->
+      active_option == opt || (mode != :quick_tags && already_selected?(opt, selection))
+    end)
     |> Enum.map(fn {_, idx} -> idx end)
     |> Enum.find(active_option, &(&1 > active_option))
   end
@@ -661,16 +720,24 @@ defmodule LiveSelect.Component do
   defp prev_selectable(%{
          selection: selection,
          active_option: active_option,
-         max_selectable: max_selectable
+         max_selectable: max_selectable,
+         mode: mode
        })
-       when max_selectable > 0 and length(selection) >= max_selectable,
+       when mode != :quick_tags and max_selectable > 0 and length(selection) >= max_selectable,
        do: active_option
 
-  defp prev_selectable(%{options: options, active_option: active_option, selection: selection}) do
+  defp prev_selectable(%{
+         options: options,
+         active_option: active_option,
+         selection: selection,
+         mode: mode
+       }) do
     options
     |> Enum.with_index()
     |> Enum.reverse()
-    |> Enum.reject(fn {opt, _} -> active_option == opt || already_selected?(opt, selection) end)
+    |> Enum.reject(fn {opt, _} ->
+      active_option == opt || (mode != :quick_tags && already_selected?(opt, selection))
+    end)
     |> Enum.map(fn {_, idx} -> idx end)
     |> Enum.find(active_option, &(&1 < active_option || active_option == -1))
   end
@@ -681,7 +748,7 @@ defmodule LiveSelect.Component do
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 20 20"
       fill="currentColor"
-      class={["w-5 h-5", @class]}
+      class={["w-5 h-5"]}
     >
       <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
     </svg>

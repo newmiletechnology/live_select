@@ -2,9 +2,39 @@ defmodule LiveSelectWeb.ShowcaseLive do
   use LiveSelectWeb, :live_view
 
   import LiveSelect
-  alias LiveSelect.Component
+  alias LiveSelect.{Component, City}
 
   use PhoenixHTMLHelpers
+
+  defmodule CitySearchMany do
+    use Ecto.Schema
+
+    import Ecto.Changeset
+
+    embedded_schema do
+      embeds_many(:city_search, City, on_replace: :delete)
+    end
+
+    def changeset(schema \\ %__MODULE__{}, params) do
+      cast(schema, params, [])
+      |> cast_embed(:city_search)
+    end
+  end
+
+  defmodule CitySearchSingle do
+    use Ecto.Schema
+
+    import Ecto.Changeset
+
+    embedded_schema do
+      embeds_one(:city_search, City, on_replace: :update)
+    end
+
+    def changeset(schema \\ %__MODULE__{}, params) do
+      cast(schema, params, [])
+      |> cast_embed(:city_search)
+    end
+  end
 
   defmodule Settings do
     use Ecto.Schema
@@ -14,7 +44,9 @@ defmodule LiveSelectWeb.ShowcaseLive do
     @class_options [
       :active_option_class,
       :available_option_class,
+      :unavailable_option_class,
       :clear_button_class,
+      :clear_button_extra_class,
       :container_class,
       :container_extra_class,
       :dropdown_class,
@@ -36,9 +68,15 @@ defmodule LiveSelectWeb.ShowcaseLive do
       field(:allow_clear, :boolean)
       field(:debounce, :integer, default: Component.default_opts()[:debounce])
       field(:disabled, :boolean)
+      field(:options_styled_as_checkboxes, :boolean)
       field(:max_selectable, :integer, default: Component.default_opts()[:max_selectable])
       field(:user_defined_options, :boolean)
-      field(:mode, Ecto.Enum, values: [:single, :tags], default: Component.default_opts()[:mode])
+
+      field(:mode, Ecto.Enum,
+        values: [:single, :tags, :quick_tags],
+        default: Component.default_opts()[:mode]
+      )
+
       field(:new, :boolean, default: true)
       field(:placeholder, :string, default: "Search for a city")
       field(:search_delay, :integer, default: 10)
@@ -62,6 +100,7 @@ defmodule LiveSelectWeb.ShowcaseLive do
           :allow_clear,
           :debounce,
           :disabled,
+          :options_styled_as_checkboxes,
           :max_selectable,
           :user_defined_options,
           :mode,
@@ -88,7 +127,7 @@ defmodule LiveSelectWeb.ShowcaseLive do
       default_opts = Component.default_opts()
 
       settings
-      |> Map.drop([:search_delay, :new, :selection])
+      |> Map.drop([:search_delay, :new, :selection, :options_styled_as_checkboxes])
       |> Map.from_struct()
       |> then(
         &if is_nil(&1.style) do
@@ -195,6 +234,7 @@ defmodule LiveSelectWeb.ShowcaseLive do
       end
     end
 
+    @spec live_select(nil | maybe_improper_list() | map()) :: Phoenix.LiveView.Rendered.t()
     def live_select(assigns) do
       opts =
         assigns[:opts]
@@ -208,19 +248,54 @@ defmodule LiveSelectWeb.ShowcaseLive do
       assigns = assign(assigns, opts: opts, format_value: format_value)
 
       ~H"""
-      <div>
-        <span class="text-success">&lt;.live_select</span>
-        <br />&nbsp;&nbsp; <span class="text-success">field</span>=<span class="text-info">{my_form[:city_search]}</span>
-        <%= for {key, value} <- @opts, !is_nil(value) do %>
-          <%= if value == true do %>
-            <br />&nbsp;&nbsp; <span class="text-success"><%= key %></span>
-          <% else %>
-            <br />&nbsp;&nbsp; <span class="text-success"><%= key %></span>=<span class="text-info"><%= @format_value.(value) %></span>
+      <%= if @options_styled_as_checkboxes do %>
+        <div>
+          <span class="text-success">&lt;.live_select</span>
+          <br />&nbsp;&nbsp; <span class="text-success">field</span>=<span class="text-info">&#123;my_form[:city_search]&#125;</span>
+          <%= for {key, value} <- @opts, !is_nil(value) do %>
+            <%= if value == true do %>
+              <br />&nbsp;&nbsp; <span class="text-success">{key}</span>
+            <% else %>
+              <br />&nbsp;&nbsp; <span class="text-success"><%= key %></span>=<span class="text-info"><%= @format_value.(value) %></span>
+            <% end %>
           <% end %>
-        <% end %>
-        <span class="text-success">/&gt;</span>
-      </div>
+          <br /><span class="text-success">&gt;</span>
+
+          <br />&nbsp;&nbsp; <span class="text-success">
+            &lt;:option :let</span>=<span class="text-info">&#123;%&#123;label: label, value: value, selected: selected&#125;&#125;</span>
+          <span class="text-success">
+            &gt;
+          </span>
+          <br /><%= indent(2) %> <span class="text-success">&lt;div class</span>=<span class="text-info">"flex justify-content items-center"&gt;</span>
+          <br /><%= indent(3) %> <span class="text-success">&lt;input</span>
+          <br /><%= indent(4) %> <span class="text-success">class</span>=<span class="text-info">"rounded w-4 h-4 mr-3 border border-border"</span>
+          <br /><%= indent(4) %> <span class="text-success">type</span>=<span class="text-info">"checkbox"</span>
+          <br /><%= indent(4) %> <span class="text-success">checked</span>=<span class="text-info">&#123;selected&#125;</span>
+          <br /><%= indent(3) %> <span class="text-success">/&gt;</span>
+          <br /><%= indent(4) %> <span class="text-success">&lt;span class</span>=<span class="text-info">"text-sm"&gt;&lt;&#37;= label &#37;&gt;</span>
+          <br /><%= indent(2) %> <span class="text-success">&lt;/div&gt;</span>
+          <br /><%= indent(1) %> <span class="text-success">&lt;/:option&gt;</span>
+          <br /><span class="text-success">&lt;.live_select/&gt;</span>
+        </div>
+      <% else %>
+        <div>
+          <span class="text-success">&lt;.live_select</span>
+          <br />&nbsp;&nbsp; <span class="text-success">field</span>=<span class="text-info">&#123;my_form[:city_search]&#125;</span>
+          <%= for {key, value} <- @opts, !is_nil(value) do %>
+            <%= if value == true do %>
+              <br />&nbsp;&nbsp; <span class="text-success">{key}</span>
+            <% else %>
+              <br />&nbsp;&nbsp; <span class="text-success"><%= key %></span>=<span class="text-info"><%= @format_value.(value) %></span>
+            <% end %>
+          <% end %>
+          <span class="text-success">/&gt;</span>
+        </div>
+      <% end %>
       """
+    end
+
+    defp indent(amount) do
+      raw(for _ <- 1..amount, do: "&nbsp;&nbsp;&nbsp;")
     end
   end
 
@@ -228,7 +303,8 @@ defmodule LiveSelectWeb.ShowcaseLive do
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
-        live_select_form: to_form(%{}, as: :my_form),
+        live_select_form: to_form(CitySearchSingle.changeset(%{}), as: "my_form"),
+        schema_module: CitySearchSingle,
         events: [],
         next_event_id: 0,
         locations: nil,
@@ -265,9 +341,14 @@ defmodule LiveSelectWeb.ShowcaseLive do
 
     case Ecto.Changeset.apply_action(changeset, :create) do
       {:ok, settings} ->
+        socket.assigns
+
         socket =
           socket
           |> assign(:settings_form, Settings.changeset(settings, %{}) |> to_form)
+          |> update(:schema_module, fn _, %{settings_form: settings_form} ->
+            if settings_form[:mode].value == :single, do: CitySearchSingle, else: CitySearchMany
+          end)
 
         {:noreply, socket}
 
@@ -296,15 +377,20 @@ defmodule LiveSelectWeb.ShowcaseLive do
       |> Map.new()
 
     socket =
-      socket
-      |> update(:live_select_form, fn form ->
-        if target == ~w(settings mode) do
-          to_form(%{}, as: :my_form)
-        else
-          form
-        end
-      end)
-      |> push_patch(to: ~p(/?#{params}))
+      if target == ~w(settings mode) do
+        assign(
+          socket,
+          :schema_module,
+          if(params["mode"] == "single", do: CitySearchSingle, else: CitySearchMany)
+        )
+        |> update(:live_select_form, fn _, %{schema_module: schema_module} ->
+          to_form(schema_module.changeset(%{}), as: "my_form")
+        end)
+      else
+        socket
+      end
+
+    socket = push_patch(socket, to: ~p(/?#{params}))
 
     {:noreply, socket}
   end
@@ -342,20 +428,6 @@ defmodule LiveSelectWeb.ShowcaseLive do
   def handle_event(event, params, socket) do
     socket =
       case event do
-        "submit" ->
-          mode = socket.assigns.settings_form.data.mode
-
-          selected = get_in(params, ~w(my_form city_search))
-          selected_text = get_in(params, ~w(my_form city_search_text_input))
-
-          {cities, locations} = extract_cities_and_locations(mode, selected_text, selected)
-
-          assign(socket,
-            cities: cities,
-            locations: locations,
-            submitted: true
-          )
-
         "live_select_change" ->
           change_event_handler().handle(params,
             delay: socket.assigns.settings_form.data.search_delay
@@ -363,15 +435,51 @@ defmodule LiveSelectWeb.ShowcaseLive do
 
           socket
 
-        "change" ->
+        event when event in ~w(change submit) ->
           params =
-            update_in(params, ~w(my_form city_search), fn
-              nil -> nil
-              selection when is_list(selection) -> Enum.map(selection, &decode/1)
-              selection -> decode(selection)
+            update_in(params, ~w(my_form city_search), fn value ->
+              case value do
+                nil -> []
+                "" -> nil
+                value when is_list(value) -> Enum.map(value, &safe_decode/1)
+                value -> safe_decode(value)
+              end
             end)
 
-          assign(socket, :live_select_form, to_form(params["my_form"], as: :my_form))
+          changeset = socket.assigns.schema_module.changeset(params["my_form"])
+
+          socket =
+            assign(
+              socket,
+              :live_select_form,
+              to_form(changeset, as: "my_form")
+            )
+
+          if event == "submit" do
+            selection =
+              Ecto.Changeset.apply_changes(changeset).city_search
+              |> then(fn
+                city_search when is_list(city_search) ->
+                  Enum.map(city_search, &Map.from_struct(&1))
+
+                nil ->
+                  nil
+
+                city_search ->
+                  Map.from_struct(city_search)
+              end)
+              |> then(fn
+                [] -> nil
+                selection -> selection
+              end)
+
+            assign(socket,
+              cities: selection && Phoenix.json_library().encode!(selection),
+              submitted: true
+            )
+          else
+            socket
+          end
 
         _event ->
           socket
@@ -392,7 +500,19 @@ defmodule LiveSelectWeb.ShowcaseLive do
     {:noreply, socket}
   end
 
+  defp safe_decode(value) do
+    case Phoenix.json_library().decode(value) do
+      {:ok, decoded} -> decoded
+      {:error, _} -> %{name: value, pos: []}
+    end
+  end
+
   def handle_info({:update_live_select, %{"id" => id}, options}, socket) do
+    options =
+      options
+      |> Enum.sort()
+      |> Enum.map(&value_mapper/1)
+
     send_update(Component, id: id, options: options)
 
     {:noreply, socket}
@@ -412,12 +532,13 @@ defmodule LiveSelectWeb.ShowcaseLive do
     {:noreply, socket}
   end
 
-  defp decode(value) do
-    case Jason.decode(value) do
-      {:ok, value} -> value
-      {:error, _} -> value
-    end
+  def quick_tags?(mode) do
+    mode == :quick_tags
   end
+
+  defp value_mapper(%City{name: name} = value), do: %{label: name, value: Map.from_struct(value)}
+
+  defp value_mapper(value), do: value
 
   defp live_select_assigns(changeset) do
     Settings.live_select_opts(changeset.data)
@@ -432,20 +553,6 @@ defmodule LiveSelectWeb.ShowcaseLive do
       "default: #{default}"
     else
       ""
-    end
-  end
-
-  defp extract_cities_and_locations(mode, selected_text, selected) do
-    cond do
-      mode == :single && selected != "" && selected_text != "" ->
-        {"city #{selected_text}", selected}
-
-      mode == :tags && selected ->
-        {"#{Enum.count(selected)} #{if Enum.count(selected) > 1, do: "cities", else: "city"}",
-         Enum.join(selected, ", ")}
-
-      true ->
-        {nil, nil}
     end
   end
 

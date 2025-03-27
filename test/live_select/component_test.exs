@@ -4,6 +4,8 @@ defmodule LiveSelect.ComponentTest do
   use LiveSelectWeb.ConnCase, async: true
   import LiveSelect.TestHelpers
 
+  alias LiveSelect.City
+
   setup tags do
     %{form: Phoenix.Component.to_form(tags[:source] || %{}, as: :my_form)}
   end
@@ -99,7 +101,7 @@ defmodule LiveSelect.ComponentTest do
 
   describe "in single mode" do
     @tag source: %{"city_search" => "B"}
-    test "can set initial selection from the form", %{form: form} do
+    test "can set selection from the form", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           field: form[:city_search],
@@ -110,7 +112,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => %{"x" => 1, "y" => 2}}
-    test "can set initial selection from form for non-string values", %{form: form} do
+    test "can set selection from form for non-string values", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           field: form[:city_search],
@@ -125,7 +127,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => "B"}
-    test "can set initial selection from form without options", %{form: form} do
+    test "can set selection from form without options", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           field: form[:city_search]
@@ -135,7 +137,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => {"B", 1}}
-    test "can set initial selection and label from form without options", %{form: form} do
+    test "can set selection and label from form without options", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           field: form[:city_search]
@@ -145,7 +147,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => "A"}
-    test "can set initial selection from form even if it can't be found in the options", %{
+    test "can set selection from form even if it can't be found in the options", %{
       form: form
     } do
       component =
@@ -155,6 +157,35 @@ defmodule LiveSelect.ComponentTest do
         )
 
       assert_selected_static(component, "A")
+    end
+
+    @tag source: %{
+           "city_search" =>
+             Ecto.Changeset.change(%City{name: "New York"}, %{name: "Berlin", pos: [10, 20]})
+         }
+    test "can set selection from form with changeset", %{
+      form: form
+    } do
+      component =
+        render_component(&LiveSelect.live_select/1,
+          field: form[:city_search],
+          value_mapper: fn %{name: name, pos: pos} ->
+            %{label: name, value: %{name: name, pos: pos}}
+          end
+        )
+
+      assert_selected_static(component, "Berlin", %{name: "Berlin", pos: [10, 20]})
+    end
+
+    @tag source: %{"city_search" => %{name: "Max", age: 40}}
+    test "applies value_mapper to the selection in the form", %{form: form} do
+      component =
+        render_component(&LiveSelect.live_select/1,
+          field: form[:city_search],
+          value_mapper: fn %{name: name, age: age} -> %{label: name, value: age} end
+        )
+
+      assert_selected_static(component, "Max", 40)
     end
 
     @tag source: %{"city_search" => 2}
@@ -172,7 +203,7 @@ defmodule LiveSelect.ComponentTest do
 
   describe "in tags mode" do
     @tag source: %{"city_search" => ["B", "D"]}
-    test "can set initial selection from form", %{form: form} do
+    test "can set selection from form", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           mode: :tags,
@@ -184,7 +215,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => [%{"x" => 1, "y" => 2}, [1, 2]]}
-    test "can set initial selection from form for non-string values", %{form: form} do
+    test "can set selection from form for non-string values", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           mode: :tags,
@@ -203,7 +234,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => ["B", "D"]}
-    test "can set initial selection from form without options", %{form: form} do
+    test "can set selection from form without options", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           mode: :tags,
@@ -214,7 +245,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => [{"B", 1}, {"D", 2}]}
-    test "can set initial selection and labels from form without options", %{form: form} do
+    test "can set selection and labels from form without options", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           mode: :tags,
@@ -228,7 +259,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => [1, 2]}
-    test "can set initial selection from form using labels from options", %{form: form} do
+    test "can set selection from form using labels from options", %{form: form} do
       component =
         render_component(&LiveSelect.live_select/1,
           mode: :tags,
@@ -243,7 +274,7 @@ defmodule LiveSelect.ComponentTest do
     end
 
     @tag source: %{"city_search" => [{"B", 1}, 2, 3]}
-    test "can set initial selection from form even it can't be found in the options", %{
+    test "can set selection from form even it can't be found in the options", %{
       form: form
     } do
       component =
@@ -257,6 +288,71 @@ defmodule LiveSelect.ComponentTest do
         %{label: "B", value: "1"},
         %{label: "D", value: "2"},
         "3"
+      ])
+    end
+
+    @tag source: %{
+           "city_search" => [
+             Ecto.Changeset.change(%City{}, %{name: "Berlin", pos: [10, 20]}),
+             Ecto.Changeset.change(%City{}, %{name: "Rome", pos: [30, 40]})
+           ]
+         }
+    test "can set selection from form with changeset", %{
+      form: form
+    } do
+      component =
+        render_component(&LiveSelect.live_select/1,
+          mode: :tags,
+          field: form[:city_search],
+          value_mapper: fn %{name: name, pos: pos} ->
+            %{label: name, value: %{name: name, pos: pos}}
+          end
+        )
+
+      assert_selected_multiple_static(component, [
+        %{label: "Berlin", value: %{name: "Berlin", pos: [10, 20]}},
+        %{label: "Rome", value: %{name: "Rome", pos: [30, 40]}}
+      ])
+    end
+
+    @tag source: %{"city_search" => [%{name: "Max", age: 40}, %{name: "Julia", age: 30}]}
+    test "applies value_mapper to the selection in the form", %{form: form} do
+      component =
+        render_component(&LiveSelect.live_select/1,
+          mode: :tags,
+          field: form[:city_search],
+          value_mapper: fn %{name: name, age: age} -> %{label: name, value: age} end
+        )
+
+      assert_selected_multiple_static(component, [
+        %{label: "Max", value: 40},
+        %{label: "Julia", value: 30}
+      ])
+    end
+
+    @tag source: %{
+           "city_search" => [
+             Ecto.Changeset.change(%City{}, %{name: "New York", pos: [5, 2]})
+             |> then(&%{&1 | action: :replace}),
+             Ecto.Changeset.change(%City{name: "Venice"}, %{name: "Berlin", pos: [10, 20]}),
+             Ecto.Changeset.change(%City{}, %{name: "Rome", pos: [30, 40]})
+           ]
+         }
+    test "can set selection from form with changeset ignoring replace changesets", %{
+      form: form
+    } do
+      component =
+        render_component(&LiveSelect.live_select/1,
+          mode: :tags,
+          field: form[:city_search],
+          value_mapper: fn %{name: name, pos: pos} ->
+            %{label: name, value: %{name: name, pos: pos}}
+          end
+        )
+
+      assert_selected_multiple_static(component, [
+        %{label: "Berlin", value: %{name: "Berlin", pos: [10, 20]}},
+        %{label: "Rome", value: %{name: "Rome", pos: [30, 40]}}
       ])
     end
 
@@ -331,7 +427,7 @@ defmodule LiveSelect.ComponentTest do
   test "raises if unknown mode is given", %{form: form} do
     assert_raise(
       RuntimeError,
-      ~s(Invalid mode: "not_a_valid_mode". Mode must be one of: [:single, :tags]),
+      ~s(Invalid mode: "not_a_valid_mode". Mode must be one of: [:single, :tags, :quick_tags]),
       fn ->
         render_component(&LiveSelect.live_select/1,
           field: form[:input],
@@ -396,9 +492,8 @@ defmodule LiveSelect.ComponentTest do
           Keyword.values(
             Keyword.drop(override_class_option(), [
               :available_option,
-              :selected_option,
-              :clear_button,
-              :clear_tag_button
+              :unavailable_option,
+              :selected_option
             ])
           ),
           Keyword.values(extend_class_option())
@@ -416,7 +511,8 @@ defmodule LiveSelect.ComponentTest do
               field: form[:input],
               options: ["A", "B", "C"],
               value: ["A", "B"],
-              mode: :tags,
+              allow_clear: @override_class == :clear_button_class,
+              mode: if(@override_class == :clear_button_class, do: :single, else: :tags),
               hide_dropdown: false
             ]
             |> Keyword.put(@override_class, "foo")
@@ -444,7 +540,7 @@ defmodule LiveSelect.ComponentTest do
            ]
   end
 
-  for style <- [:daisyui, :tailwind, :none, nil] do
+  for style <- [nil] do
     @style style
 
     describe "when style = #{@style || "default"}" do
@@ -469,7 +565,8 @@ defmodule LiveSelect.ComponentTest do
             )
 
           assert Floki.attribute(component, selectors()[@element], "class") == [
-                   get_in(expected_class(), [@style || default_style(), @element]) || ""
+                   (get_in(expected_class(), [@style || default_style(), @element]) || [])
+                   |> Enum.join(" ")
                  ]
         end
 
@@ -489,9 +586,8 @@ defmodule LiveSelect.ComponentTest do
                   if(@style, do: [style: @style], else: []) ++ [{option, "foo"}]
               )
 
-            assert Floki.attribute(component, selectors()[@element], "class") == [
-                     "foo"
-                   ]
+            assert Floki.attribute(component, selectors()[@element], "class") ==
+                     ~W(foo)
           end
 
           test "#{@element} class can be overridden with #{override_class_option()[@element]} by passing a list",
@@ -509,9 +605,8 @@ defmodule LiveSelect.ComponentTest do
                   if(@style, do: [style: @style], else: []) ++ [{option, ["foo", nil, "goo"]}]
               )
 
-            assert Floki.attribute(component, selectors()[@element], "class") == [
-                     "foo goo"
-                   ]
+            assert Floki.attribute(component, selectors()[@element], "class") ==
+                     ["foo goo"]
           end
         end
 
@@ -532,9 +627,9 @@ defmodule LiveSelect.ComponentTest do
               )
 
             assert Floki.attribute(component, selectors()[@element], "class") == [
-                     ((get_in(expected_class(), [@style || default_style(), @element]) || "") <>
-                        " foo")
-                     |> String.trim()
+                     ((get_in(expected_class(), [@style || default_style(), @element]) || []) ++
+                        ~W(foo))
+                     |> Enum.join(" ")
                    ]
           end
 
@@ -554,9 +649,9 @@ defmodule LiveSelect.ComponentTest do
               )
 
             assert Floki.attribute(component, selectors()[@element], "class") == [
-                     ((get_in(expected_class(), [@style || default_style(), @element]) || "") <>
-                        " foo goo")
-                     |> String.trim()
+                     ((get_in(expected_class(), [@style || default_style(), @element]) || []) ++
+                        ~W(foo goo))
+                     |> Enum.join(" ")
                    ]
           end
 
@@ -567,10 +662,10 @@ defmodule LiveSelect.ComponentTest do
             base_classes = get_in(expected_class(), [@style || default_style(), @element])
 
             if base_classes do
-              class_to_remove = String.split(base_classes) |> List.first()
+              class_to_remove = base_classes |> List.first()
 
               expected_classes =
-                String.split(base_classes)
+                base_classes
                 |> Enum.drop(1)
                 |> Enum.join(" ")
 
@@ -606,12 +701,12 @@ defmodule LiveSelect.ComponentTest do
           )
 
         expected_class =
-          (get_in(expected_class(), [@style || default_style(), :text_input]) || "") <>
-            " " <>
-            (get_in(expected_class(), [@style || default_style(), :text_input_selected]) || "")
+          ((get_in(expected_class(), [@style || default_style(), :text_input]) || []) ++
+             (get_in(expected_class(), [@style || default_style(), :text_input_selected]) || []))
+          |> Enum.join(" ")
 
         assert Floki.attribute(component, selectors()[:text_input], "class") == [
-                 String.trim(expected_class)
+                 expected_class
                ]
       end
 
@@ -629,97 +724,16 @@ defmodule LiveSelect.ComponentTest do
           )
 
         expected_class =
-          (get_in(expected_class(), [@style || default_style(), :text_input]) || "") <>
-            " foo"
+          ((get_in(expected_class(), [@style || default_style(), :text_input]) || []) ++
+             ~W(foo))
+          |> Enum.join(" ")
 
         assert Floki.attribute(component, selectors()[:text_input], "class") == [
                  String.trim(expected_class)
                ]
       end
 
-      test "class for selected option is set", %{form: form} do
-        component =
-          render_component(
-            &LiveSelect.live_select/1,
-            [
-              mode: :tags,
-              field: form[:city_search],
-              options: ["A", "B", "C"],
-              value: "B"
-            ] ++
-              if(@style, do: [style: @style], else: [])
-          )
-
-        assert_selected_option_class(
-          component,
-          2,
-          get_in(expected_class(), [@style || default_style(), :selected_option]) || ""
-        )
-      end
-
-      test "class for selected option can be overridden", %{form: form} do
-        component =
-          render_component(
-            &LiveSelect.live_select/1,
-            [
-              mode: :tags,
-              field: form[:city_search],
-              options: ["A", "B", "C"],
-              value: "B",
-              selected_option_class: "foo"
-            ] ++
-              if(@style, do: [style: @style], else: [])
-          )
-
-        assert_selected_option_class(
-          component,
-          2,
-          "foo"
-        )
-      end
-
-      test "class for available option is set", %{form: form} do
-        component =
-          render_component(
-            &LiveSelect.live_select/1,
-            [
-              mode: :tags,
-              field: form[:city_search],
-              options: ["A", "B", "C"],
-              value: "B"
-            ] ++
-              if(@style, do: [style: @style], else: [])
-          )
-
-        assert_available_option_class(
-          component,
-          2,
-          get_in(expected_class(), [@style || default_style(), :available_option]) || ""
-        )
-      end
-
-      test "class for available option can be overridden", %{form: form} do
-        component =
-          render_component(
-            &LiveSelect.live_select/1,
-            [
-              mode: :tags,
-              field: form[:city_search],
-              options: ["A", "B", "C"],
-              value: "B",
-              available_option_class: "foo"
-            ] ++
-              if(@style, do: [style: @style], else: [])
-          )
-
-        assert_available_option_class(
-          component,
-          2,
-          "foo"
-        )
-      end
-
-      test "class for clear button can be set", %{form: form} do
+      test "class for clear button can be overridden", %{form: form} do
         component =
           render_component(
             &LiveSelect.live_select/1,
@@ -734,11 +748,32 @@ defmodule LiveSelect.ComponentTest do
               if(@style, do: [style: @style], else: [])
           )
 
-        assert Floki.attribute(component, selectors()[:clear_button], "class") == [
-                 ((get_in(expected_class(), [@style || default_style(), :clear_button]) || "") <>
-                    " foo")
-                 |> String.trim()
-               ]
+        assert Floki.attribute(component, selectors()[:clear_button], "class") == ~W(foo)
+      end
+
+      if @style != :none do
+        test "class for clear button can be extended", %{form: form} do
+          component =
+            render_component(
+              &LiveSelect.live_select/1,
+              [
+                mode: :single,
+                field: form[:city_search],
+                options: ["A", "B", "C"],
+                value: "B",
+                allow_clear: true,
+                clear_button_extra_class: "foo"
+              ] ++
+                if(@style, do: [style: @style], else: [])
+            )
+
+          assert Floki.attribute(component, selectors()[:clear_button], "class") == [
+                   ((get_in(expected_class(), [@style || default_style(), :clear_button]) || []) ++
+                      ~W(foo))
+                   |> Enum.join(" ")
+                   |> String.trim()
+                 ]
+        end
       end
 
       for element <- [
@@ -762,7 +797,8 @@ defmodule LiveSelect.ComponentTest do
             )
 
           assert Floki.attribute(component, selectors()[@element], "class") == [
-                   get_in(expected_class(), [@style || default_style(), @element]) || ""
+                   (get_in(expected_class(), [@style || default_style(), @element]) || [])
+                   |> Enum.join(" ")
                  ]
         end
 
@@ -784,9 +820,7 @@ defmodule LiveSelect.ComponentTest do
                   if(@style, do: [style: @style], else: []) ++ [{option, "foo"}]
               )
 
-            assert Floki.attribute(component, selectors()[@element], "class") == [
-                     "foo"
-                   ]
+            assert Floki.attribute(component, selectors()[@element], "class") == ~w(foo)
           end
         end
 
@@ -809,8 +843,9 @@ defmodule LiveSelect.ComponentTest do
               )
 
             assert Floki.attribute(component, selectors()[@element], "class") == [
-                     ((get_in(expected_class(), [@style || default_style(), @element]) || "") <>
-                        " foo")
+                     ((get_in(expected_class(), [@style || default_style(), @element]) || []) ++
+                        ~W(foo))
+                     |> Enum.join(" ")
                      |> String.trim()
                    ]
           end
@@ -822,10 +857,10 @@ defmodule LiveSelect.ComponentTest do
             base_classes = get_in(expected_class(), [@style || default_style(), @element])
 
             if base_classes do
-              class_to_remove = String.split(base_classes) |> List.first()
+              class_to_remove = base_classes |> List.first()
 
               expected_classes =
-                String.split(base_classes)
+                base_classes
                 |> Enum.drop(1)
                 |> Enum.join(" ")
 

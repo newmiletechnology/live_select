@@ -6,6 +6,8 @@ defmodule LiveSelectTest do
   import LiveSelect.TestHelpers
   import Mox
 
+  doctest LiveSelect, import: true
+
   setup :verify_on_exit!
 
   test "can be rendered", %{conn: conn} do
@@ -214,6 +216,28 @@ defmodule LiveSelectTest do
     end
   end
 
+  test "the clear button can be disabled", %{conn: conn} do
+    {:ok, live, _html} = live(conn, "/?allow_clear=true&disabled=true")
+
+    stub_options([{"A", 1}, {"B", 1}])
+
+    type(live, "ABC")
+
+    select_nth_option(live, 1)
+
+    assert element(live, selectors()[:text_input])
+           |> render()
+           |> Floki.parse_fragment!()
+           |> Floki.attribute("disabled") == ["disabled"]
+
+    assert element(live, selectors()[:hidden_input])
+           |> render()
+           |> Floki.parse_fragment!()
+           |> Floki.attribute("disabled") == ["disabled"]
+
+    refute has_element?(live, selectors()[:clear_button])
+  end
+
   test "can render custom clear button", %{conn: conn} do
     {:ok, live, _html} = live(conn, "/live_component_test")
 
@@ -382,7 +406,93 @@ defmodule LiveSelectTest do
     assert_selected(live, "B", 2)
   end
 
-  describe "after focusing on the text input field" do
+  describe "after clicking on the text input field" do
+    setup %{conn: conn} do
+      stub_options(
+        A: 1,
+        B: 2,
+        C: 3
+      )
+
+      {:ok, live, _html} =
+        live(conn, "/?phx-focus=focus-event-for-parent&phx-blur=blur-event-for-parent")
+
+      type(live, "ABC")
+
+      select_nth_option(live, 2)
+
+      assert_selected(live, :B, 2)
+
+      element(live, selectors()[:text_input])
+      |> render_click()
+
+      %{live: live}
+    end
+
+    test "the text input field is cleared", %{live: live} do
+      assert_clear(live, false)
+    end
+
+    test "hitting Escape restores the selection", %{live: live} do
+      keydown(live, "Escape")
+
+      assert_selected_static(live, :B, 2)
+    end
+
+    test "blurring the field restores the selection", %{live: live} do
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      assert_selected_static(live, :B, 2)
+    end
+
+    test "blurring, then clicking, then blurring again restores the selection", %{live: live} do
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      element(live, selectors()[:text_input])
+      |> render_click()
+
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      assert_selected_static(live, :B, 2)
+    end
+
+    test "a focus event is sent to the parent", %{live: live} do
+      assert_push_event(live, "select", %{
+        id: "my_form_city_search_live_select_component",
+        parent_event: "focus-event-for-parent"
+      })
+    end
+
+    test "blurring the field sends a blur event to the parent", %{live: live} do
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      assert_push_event(live, "select", %{
+        id: "my_form_city_search_live_select_component",
+        parent_event: "blur-event-for-parent"
+      })
+    end
+
+    test "when value forced, clicking & blurring restores the selection", %{live: live} do
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      send_update(live, value: 3)
+
+      element(live, selectors()[:text_input])
+      |> render_click()
+
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      assert_selected_static(live, :C, 3)
+    end
+  end
+
+  describe "after focusing the text input field" do
     setup %{conn: conn} do
       stub_options(
         A: 1,
@@ -416,6 +526,19 @@ defmodule LiveSelectTest do
     end
 
     test "blurring the field restores the selection", %{live: live} do
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      assert_selected_static(live, :B, 2)
+    end
+
+    test "blurring, then focusing, then blurring again restores the selection", %{live: live} do
+      element(live, selectors()[:text_input])
+      |> render_blur()
+
+      element(live, selectors()[:text_input])
+      |> render_focus()
+
       element(live, selectors()[:text_input])
       |> render_blur()
 
@@ -673,39 +796,48 @@ defmodule LiveSelectTest do
     assert_clear_static(live)
   end
 
-  test "form recovery (1)", %{conn: conn} do
+  test "selection recovery (1)", %{conn: conn} do
     {:ok, live, _html} = live(conn, "/")
 
     value = [10, 20]
-    render_change(live, "change", %{"my_form" => %{"city_search" => Jason.encode!(value)}})
 
-    render_hook(element(live, selectors()[:container]), "options_recovery", [
+    render_change(live, "change", %{
+      "my_form" => %{"city_search" => Phoenix.json_library().encode!(value)}
+    })
+
+    render_hook(element(live, selectors()[:container]), "selection_recovery", [
       %{label: "A", value: value}
     ])
 
     assert_selected_static(live, "A", value)
   end
 
-  test "form recovery (2)", %{conn: conn} do
+  test "selection recovery (2)", %{conn: conn} do
     {:ok, live, _html} = live(conn, "/")
 
-    value = %{"x" => 10, "y" => 20}
-    render_change(live, "change", %{"my_form" => %{"city_search" => Jason.encode!(value)}})
+    value = %{"name" => "A", "pos" => [10.0, 20.0]}
 
-    render_hook(element(live, selectors()[:container]), "options_recovery", [
+    render_change(live, "change", %{
+      "my_form" => %{"city_search" => Phoenix.json_library().encode!(value)}
+    })
+
+    render_hook(element(live, selectors()[:container]), "selection_recovery", [
       %{label: "A", value: value}
     ])
 
     assert_selected_static(live, "A", value)
   end
 
-  test "form recovery (3)", %{conn: conn} do
+  test "selection recovery (3)", %{conn: conn} do
     {:ok, live, _html} = live(conn, "/")
 
     value = "A"
-    render_change(live, "change", %{"my_form" => %{"city_search" => value}})
 
-    render_hook(element(live, selectors()[:container]), "options_recovery", [
+    render_change(live, "change", %{
+      "my_form" => %{"city_search" => Phoenix.json_library().encode!(value)}
+    })
+
+    render_hook(element(live, selectors()[:container]), "selection_recovery", [
       %{label: "A", value: value}
     ])
 
@@ -745,6 +877,115 @@ defmodule LiveSelectTest do
           live,
           1,
           "foo"
+        )
+      end
+
+      test "class for selected option is set", %{conn: conn} do
+        {:ok, live, _html} = live(conn, "/?style=#{@style}")
+
+        stub_options(["A", "B", "C"])
+
+        type(live, "ABC")
+
+        select_nth_option(live, 2)
+
+        type(live, "ABC")
+
+        assert_selected_option_class(
+          live,
+          2,
+          get_in(expected_class(), [@style || default_style(), :selected_option]) || []
+        )
+      end
+
+      test "class for selected option can be overridden", %{conn: conn} do
+        {:ok, live, _html} = live(conn, "/?style=#{@style}&selected_option_class=foo")
+
+        stub_options(["A", "B", "C"])
+
+        type(live, "ABC")
+
+        select_nth_option(live, 2)
+
+        type(live, "ABC")
+
+        assert_selected_option_class(
+          live,
+          2,
+          ~W(foo)
+        )
+      end
+
+      test "class for available option is set", %{conn: conn} do
+        {:ok, live, _html} = live(conn, "/?style=#{@style}")
+
+        stub_options(["A", "B", "C"])
+
+        type(live, "ABC")
+
+        select_nth_option(live, 2)
+
+        type(live, "ABC")
+
+        assert_available_option_class(
+          live,
+          2,
+          get_in(expected_class(), [@style || default_style(), :available_option]) || []
+        )
+      end
+
+      test "class for available option can be overridden", %{conn: conn} do
+        {:ok, live, _html} = live(conn, "/?style=#{@style}&available_option_class=foo")
+
+        stub_options(["A", "B", "C"])
+
+        type(live, "ABC")
+
+        select_nth_option(live, 2)
+
+        type(live, "ABC")
+
+        assert_available_option_class(
+          live,
+          2,
+          ~W(foo)
+        )
+      end
+
+      test "class for unavailable option is set", %{conn: conn} do
+        {:ok, live, _html} = live(conn, "/?style=#{@style}&mode=tags&max_selectable=1")
+
+        stub_options(["A", "B", "C"])
+
+        type(live, "ABC")
+
+        select_nth_option(live, 2)
+
+        type(live, "ABC")
+
+        assert_unavailable_option_class(
+          live,
+          2,
+          get_in(expected_class(), [@style || default_style(), :unavailable_option]) || []
+        )
+      end
+
+      test "class for unavailable option can be overridden", %{conn: conn} do
+        {:ok, live, _html} =
+          live(conn, "/?style=#{@style}&mode=tags&max_selectable=1&unavailable_option_class=foo")
+
+        stub_options(["A", "B", "C"])
+
+        type(live, "ABC")
+
+        select_nth_option(live, 2)
+
+        type(live, "ABC")
+
+        assert_unavailable_option_class(
+          live,
+          2,
+          ~W(foo)
         )
       end
     end
